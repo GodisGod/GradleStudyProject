@@ -1,0 +1,63 @@
+apply plugin: 'maven'
+//打包main目录下代码和资源的 task
+//设置源集和使用的task
+task androidSourcesJar(type: Jar) {
+    classifier = 'sources'
+    from android.sourceSets.main.java.srcDirs
+}
+
+//配置需要上传到maven仓库的文件
+artifacts {
+    archives androidSourcesJar
+}
+
+def modelName = project.name
+def modelVersion = project.version
+
+task printName(group: "upload") {
+    Properties properties = new Properties();
+    properties.load(project.rootProject.file("maven_version.properties").newDataInputStream())
+    //防止和gradle依赖冲突，所以需要显示读取属性文件
+    if (properties.containsKey(modelName)) {
+        modelVersion = properties.getProperty(modelName)
+        println("开始发布模块 = " + modelName + "  " + modelVersion + "版本")
+        version = modelVersion
+    } else {
+        println("未找到模块 = " + modelName + "，请检查配置文件maven_version.properties")
+        throw new GradleException("未找到\"" + modelName + "\"模块，请检查配置文件：maven_version.properties")
+    }
+}
+
+//上传到Maven仓库的task
+uploadArchives {
+
+    printName
+
+    println("上传用户：" + NEXUS_USER)
+
+    doFirst {
+        repositories {
+            mavenDeployer {
+                def url = project.version.toString().endsWith('-SNAPSHOT') ?
+                        NEXUS_SNAPSHOT_URL : NEXUS_RELEASE_URL
+                repository(url: url) {
+                    //nexus登录默认用户名和密码
+                    authentication(userName: NEXUS_USER, password: NEXUS_PASSWORD)
+                }
+                pom.groupId = NEXUS_GROUPID// 唯一标识（通常为模块包名，也可以任意）
+                pom.artifactId = modelName // 项目名称（通常为类库模块名称，也可以任意）
+                pom.version = modelVersion // 版本号
+            }
+        }
+    }
+
+    doLast {
+        println("模块 = " + modelName + "  " + modelVersion + "版本发布成功")
+    }
+}
+
+uploadArchives.mustRunAfter(printName)
+
+afterEvaluate {
+    uploadArchives
+}
